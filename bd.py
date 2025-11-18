@@ -1,5 +1,6 @@
 import psycopg2
 from psycopg2 import Error
+from psycopg2 import extras
 import json
 from datetime import datetime
 import subprocess
@@ -11,10 +12,10 @@ class DB:
         self.connection = None
         try:
             self.connection = psycopg2.connect(
-                host=hosts,
-                database=postgres,
-                user=postgres,
-                password=progect
+                host="localhost",
+                database="progect",
+                user="postgres",
+                password="9365"
             )
             print("Подключение к базе данных установлено")
         except Error as e:
@@ -103,7 +104,7 @@ class DB:
 
     def get_users(self):
         try:
-            cursor = self.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor = self.connection.cursor(cursor_factory=extras.RealDictCursor)
             cursor.execute("SELECT id, name, email, role, created_at FROM users ORDER BY id")
             results = cursor.fetchall()
             return [dict(row) for row in results]
@@ -170,7 +171,7 @@ class DB:
 
     def get_projects(self):
         try:
-            cursor = self.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor = self.connection.cursor(cursor_factory=extras.RealDictCursor)
             cursor.execute("""
                 SELECT p.*, COUNT(l.id) as leads_count
                 FROM projects p
@@ -250,7 +251,7 @@ class DB:
 
     def get_leads(self, limit=None, offset=None):
         try:
-            cursor = self.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor = self.connection.cursor(cursor_factory=extras.RealDictCursor)
             query = """
                 SELECT l.*, p.name as project_name
                 FROM leads l
@@ -322,7 +323,7 @@ class DB:
 
     def search_leads(self, search_term):
         try:
-            cursor = self.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor = self.connection.cursor(cursor_factory=extras.RealDictCursor)
             query = """
                 SELECT l.*, p.name as project_name
                 FROM leads l
@@ -341,7 +342,7 @@ class DB:
 
     def filter_leads(self, project_id=None, status=None, date_from=None, date_to=None):
         try:
-            cursor = self.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor = self.connection.cursor(cursor_factory=extras.RealDictCursor)
             query = """
                 SELECT l.*, p.name as project_name
                 FROM leads l
@@ -378,7 +379,7 @@ class DB:
 
     def get_lead_status_history(self, lead_id):
         try:
-            cursor = self.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor = self.connection.cursor(cursor_factory=extras.RealDictCursor)
             cursor.execute("""
                 SELECT * FROM lead_status_history
                 WHERE lead_id = %s
@@ -392,7 +393,7 @@ class DB:
 
     def get_stats(self):
         try:
-            cursor = self.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor = self.connection.cursor(cursor_factory=extras.RealDictCursor)
 
             # Общая статистика
             cursor.execute("""
@@ -453,7 +454,7 @@ class DB:
     def export_leads_csv(self, filename):
         """Экспорт заявок в CSV"""
         try:
-            cursor = self.connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor = self.connection.cursor(cursor_factory=extras.RealDictCursor)
             cursor.execute("""
                 SELECT l.id, l.name, l.phone, l.email, p.name as project,
                        l.title, l.description, l.status, l.created_at, l.operator_comment
@@ -526,9 +527,9 @@ def main():
     # Замените параметры подключения на свои
     db = DB(
         host="localhost",
-        database="quicklead",
+        database="progect",
         user="postgres",
-        password="password"
+        password="9365"
     )
 
     try:
