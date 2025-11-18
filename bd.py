@@ -11,7 +11,7 @@ class DB:
         self.connection = None
         try:
             self.connection = psycopg2.connect(
-                host=host,
+                host=hosts,
                 database=postgres,
                 user=postgres,
                 password=progect
