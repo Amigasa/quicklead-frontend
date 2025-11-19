@@ -26,41 +26,94 @@ class DB:
         try:
             cursor = self.connection.cursor()
 
-            # Таблица пользователей
+            # Проверяем существование таблиц
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    email VARCHAR(255) UNIQUE NOT NULL,
-                    password VARCHAR(255) NOT NULL,
-                    role VARCHAR(50) NOT NULL CHECK (role IN ('admin', 'operator', 'client'))
-                )
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                AND table_name IN ('users', 'projects', 'applications')
             """)
+            existing_tables = [row[0] for row in cursor.fetchall()]
 
-            # Таблица проектов
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS projects (
-                    id SERIAL PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    api_key VARCHAR(255) UNIQUE NOT NULL,
-                    applications_count INTEGER
-                )
-            """)
+            # Создаем таблицы только если они не существуют
+            if 'users' not in existing_tables:
+                cursor.execute("""
+                    CREATE TABLE users (
+                        id SERIAL PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        email VARCHAR(255) UNIQUE NOT NULL,
+                        password VARCHAR(255) NOT NULL,
+                        role VARCHAR(50) NOT NULL CHECK (role IN ('администратор', 'оператор', 'клиент'))
+                    )
+                """)
+                print("Таблица users создана")
+            else:
+                # Проверяем и обновляем структуру таблицы users если нужно
+                cursor.execute("""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'users'
+                """)
+                user_columns = [row[0] for row in cursor.fetchall()]
+                if 'role' not in user_columns:
+                    cursor.execute("ALTER TABLE users ADD COLUMN role VARCHAR(50)")
+                    cursor.execute("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('администратор', 'оператор', 'клиент'))")
+                    print("Таблица users обновлена")
 
-            # Таблица заявок
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS applications (
-                    id SERIAL PRIMARY KEY,
-                    client_name VARCHAR(255) NOT NULL,
-                    phone VARCHAR(255),
-                    project_id INTEGER REFERENCES projects(id),
-                    status VARCHAR(50) DEFAULT 'new' CHECK (status IN ('new', 'in_work', 'callback', 'success', 'failure')),
-                    application_date DATE
-                )
-            """)
+            if 'projects' not in existing_tables:
+                cursor.execute("""
+                    CREATE TABLE projects (
+                        id SERIAL PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        api_key VARCHAR(255) UNIQUE NOT NULL,
+                        applications_count INTEGER
+                    )
+                """)
+                print("Таблица projects создана")
+
+            if 'applications' not in existing_tables:
+                cursor.execute("""
+                    CREATE TABLE applications (
+                        id SERIAL PRIMARY KEY,
+                        client_name VARCHAR(255) NOT NULL,
+                        phone VARCHAR(255),
+                        project_id INTEGER REFERENCES projects(id),
+                        status VARCHAR(50) DEFAULT 'новая' CHECK (status IN ('новая', 'в работе', 'перепозвонить', 'успешно', 'неудача')),
+                        application_date DATE
+                    )
+                """)
+                print("Таблица applications создана")
+            else:
+                # Проверяем и обновляем структуру таблицы applications если нужно
+                cursor.execute("""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public' AND table_name = 'applications'
+                """)
+                app_columns = [row[0] for row in cursor.fetchall()]
+
+                if 'project_id' not in app_columns:
+                    cursor.execute("ALTER TABLE applications ADD COLUMN project_id INTEGER REFERENCES projects(id)")
+                    print("Колонка project_id добавлена в таблицу applications")
+
+                if 'application_date' not in app_columns:
+                    cursor.execute("ALTER TABLE applications ADD COLUMN application_date DATE")
+                    print("Колонка application_date добавлена в таблицу applications")
+
+                # Обновляем CHECK constraint для status
+                try:
+                    cursor.execute("""
+                        ALTER TABLE applications DROP CONSTRAINT IF EXISTS applications_status_check
+                    """)
+                    cursor.execute("""
+                        ALTER TABLE applications ADD CONSTRAINT applications_status_check
+                        CHECK (status IN ('новая', 'в работе', 'перепозвонить', 'успешно', 'неудача'))
+                    """)
+                except:
+                    pass  # Игнорируем ошибки с constraint
 
             self.connection.commit()
-            print("Таблицы созданы успешно")
+            print("Проверка и создание таблиц завершены успешно")
             return True
         except Error as e:
             print(f"Ошибка создания таблиц: {e}")
@@ -87,7 +140,7 @@ class DB:
     def get_users(self):
         try:
             cursor = self.connection.cursor(cursor_factory=extras.RealDictCursor)
-            cursor.execute("SELECT id, name, email, role FROM users ORDER BY id DESC")
+            cursor.execute("SELECT id, name, email, role FROM users WHERE role != 'клиент' ORDER BY id DESC")
             results = cursor.fetchall()
             return [dict(row) for row in results]
         except Error as e:
@@ -317,7 +370,7 @@ class DB:
                 values.append(project_id)
 
             if status:
-                query += " AND a.status = %s"
+                query += " AND LOWER(a.status) = LOWER(%s)"
                 values.append(status)
 
             if date_from:
@@ -345,7 +398,7 @@ class DB:
                 SELECT a.*, p.name as project_name
                 FROM applications a
                 LEFT JOIN projects p ON a.project_id = p.id
-                WHERE a.status != 'success'
+                WHERE a.status != 'успешно'
                 ORDER BY a.id DESC
             """)
             results = cursor.fetchall()
@@ -361,11 +414,10 @@ class DB:
             # Общая статистика
             cursor.execute("""
                 SELECT
-                    COUNT(*) as total_applications,
-                    COUNT(CASE WHEN status = 'new' THEN 1 END) as new_applications,
-                    COUNT(CASE WHEN status = 'in_work' THEN 1 END) as in_work_applications,
-                    COUNT(CASE WHEN status = 'success' THEN 1 END) as success_applications,
-                    COUNT(CASE WHEN application_date >= CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as applications_last_7_days
+                    COUNT(*) as "Всего заявок",
+                    COUNT(CASE WHEN LOWER(status) = 'новая' THEN 1 END) as "Новые заявки",
+                    COUNT(CASE WHEN LOWER(status) = 'в работе' THEN 1 END) as "В работе",
+                    COUNT(CASE WHEN LOWER(status) = 'успешно' THEN 1 END) as "Успешно"
                 FROM applications
             """)
             stats = dict(cursor.fetchone())
@@ -470,9 +522,9 @@ class DB:
                 if aid:
                     # Обновляем статусы для некоторых заявок
                     if aid % 2 == 0:
-                        self.update_application(aid, status='in_work')
+                        self.update_application(aid, status='в работе')
                     elif aid % 3 == 0:
-                        self.update_application(aid, status='success')
+                        self.update_application(aid, status='успешно')
 
             print("Тестовые данные добавлены успешно")
             return True
@@ -519,7 +571,7 @@ def main():
         print(f"\nНайдено по поиску 'Иван': {len(search_results)}")
 
         # Фильтрация заявок
-        filtered = db.filter_applications(status='new')
+        filtered = db.filter_applications(status='новая')
         print(f"Новых заявок: {len(filtered)}")
 
         # Экспорт в CSV
