@@ -1,35 +1,51 @@
 // Основной класс приложения
 class QuickLeadManager {
-    constructor() {
+        constructor() {
         this.currentUser = null;
         this.currentPage = 'login';
+        this.api = api;
         this.init();
     }
 
-    init() {
+    async init() {
         this.render();
-        this.checkAuth();
+        await this.checkAuth();
     }
 
-    checkAuth() {
-        // Проверка авторизации (заглушка)
+    async checkAuth() {
         const savedUser = localStorage.getItem('qlm_user');
-        if (savedUser) {
+        const savedToken = localStorage.getItem('qlm_token');
+        
+        if (savedUser && savedToken) {
             this.currentUser = JSON.parse(savedUser);
+            this.api.token = savedToken;
             this.navigate('dashboard');
         }
+    }
+
+    async login(userData) {
+        try {
+            const result = await this.api.login(userData.username, userData.password);
+            this.currentUser = result.user;
+            this.navigate('dashboard');
+        } catch (error) {
+            alert('Ошибка авторизации: ' + error.message);
+        }
+    }
+
+    async demoLogin(role) {
+        const demoCredentials = {
+            admin: { username: 'admin', password: 'admin' },
+            operator: { username: 'operator', password: 'operator' },
+            client: { username: 'client', password: 'client' }
+        };
+        
+        await this.login(demoCredentials[role]);
     }
 
     navigate(page) {
         this.currentPage = page;
         this.render();
-    }
-
-    login(userData) {
-        // Заглушка авторизации
-        this.currentUser = userData;
-        localStorage.setItem('qlm_user', JSON.stringify(userData));
-        this.navigate('dashboard');
     }
 
     logout() {
@@ -97,16 +113,6 @@ class QuickLeadManager {
                 </div>
             </div>
         `;
-    }
-
-    demoLogin(role) {
-        const users = {
-            admin: { id: 1, name: 'Администратор', role: 'admin', email: 'admin@qlm.ru' },
-            operator: { id: 2, name: 'Оператор', role: 'operator', email: 'operator@qlm.ru' },
-            client: { id: 3, name: 'Иван Иванов', role: 'client', email: 'client@qlm.ru' }
-        };
-        
-        this.login(users[role]);
     }
 
     attachLoginListeners() {
